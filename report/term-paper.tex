@@ -8,7 +8,7 @@
 \maketitle
 
 \begin{abstract}
-This paper evaluates FIFO, LRU, Belady's optimal replacement, and a lightweight decision-tree eviction heuristic on a seeded synthetic trace. The trace begins with locality-heavy references and changes at its midpoint to broad random access. The experiment shows how increasing the working set changes fault behavior and tests whether simple history features can adapt to the shift. The optimal policy provides an offline lower bound; it is not an implementable online policy.
+This paper evaluates FIFO, LRU, Belady's optimal replacement, and a lightweight decision-tree eviction heuristic on three independently seeded synthetic traces. Each trace changes at its midpoint from locality-heavy references to broad random access. We report mean results and sample standard deviations, examining how working-set changes affect page faults and whether simple history features respond to the shift. Optimal provides an offline lower bound, not an implementable online policy.
 \end{abstract}
 
 \section{Problem framing}
@@ -20,10 +20,10 @@ The Python program in `src/experiment.py` implements all four policies. The simu
 This design is deliberately small and interpretable. It is also an important limitation: the labels use future information during training, so the result demonstrates a learned heuristic rather than a fully online production predictor.
 
 \section{Experimental setup}
-The evaluation trace contains 1,000 references and uses random seed 307. References 0--499 are locality-heavy: 82\% of accesses select from a small hot set, with occasional sequential accesses. At reference 500, the distribution shifts to uniform random references over 32 pages. Each policy is tested with 4, 8, and 12 frames; the main comparison uses 8 frames. The same trace is replayed for every policy, so differences are attributable to replacement decisions. The exact trace and metadata are stored in `results/`.
+Three evaluation traces use seeds 307, 308, and 309. Each contains 1,000 references. References 0--499 are locality-heavy: 82\% of accesses select from a small hot set, with occasional sequential accesses. At reference 500, the distribution shifts to uniform random references over 32 pages. Each policy is tested with 4, 8, and 12 frames; the main comparison uses 8 frames. Each trace is replayed unchanged for every policy. The learned tree is trained once on an independent trace and held fixed. Per-seed traces and measurements are stored in `results/`.
 
 \section{Results and analysis}
-Table~\ref{tab:results} is populated from `results/metrics.csv` after running the supplied command. The generated figure shows the 8-frame fault counts for the two phases.
+Table~\ref{tab:results} reports the mean and sample standard deviation of faults over three seeds. The generated figure shows the 8-frame mean fault counts for the two phases, with error bars of one sample standard deviation.
 
 \begin{table}[h]
 \centering
@@ -31,17 +31,17 @@ Table~\ref{tab:results} is populated from `results/metrics.csv` after running th
 \label{tab:results}
 \begin{tabular}{lrrrr}
 \toprule
-Policy & Local faults & Local hit ratio & Shifted faults & Shifted hit ratio\\
+Policy & Local faults (mean $\pm$ SD) & Local hit ratio & Shifted faults (mean $\pm$ SD) & Shifted hit ratio\\
 \midrule
-FIFO & 129 & 0.742 & 379 & 0.242 \\
-LRU & 109 & 0.782 & 382 & 0.236 \\
-Optimal & 56 & 0.888 & 234 & 0.532 \\
-Learned & 81 & 0.838 & 396 & 0.208 \\
+FIFO & 138.3 $\pm$ 8.1 & 0.723 & 375.0 $\pm$ 9.6 & 0.250 \\
+LRU & 110.0 $\pm$ 6.6 & 0.780 & 372.7 $\pm$ 16.2 & 0.255 \\
+Optimal & 57.3 $\pm$ 1.5 & 0.885 & 231.7 $\pm$ 5.9 & 0.537 \\
+Learned & 79.0 $\pm$ 2.6 & 0.842 & 383.7 $\pm$ 11.6 & 0.233 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-In the locality phase, LRU should benefit from repeated hot-page references because recently used pages are likely to be used again. FIFO can evict a frequently reused page simply because it arrived earlier. Optimal should have the fewest faults because it sees the future and serves as a lower bound. After the shift, all policies face a larger effective working set, so hit ratios decrease and faults increase. The size of the degradation depends on how well each policy's assumptions match the new distribution. A history-based learner can be competitive when recency and frequency remain informative, but it cannot remove compulsory misses caused by insufficient frames and may misclassify candidates at the abrupt boundary.
+In the locality phase, LRU benefits from repeated hot-page references because recent use predicts reuse. Optimal has the fewest faults because it sees the future and serves as a lower bound. After the shift, the larger effective working set drives a substantial increase in faults for every policy. The learned heuristic has the lowest locality-phase mean faults among the implementable policies in this setup, but its shifted-phase hit ratio is below FIFO and LRU. Its fixed model does not generalize equally well to the new distribution, illustrating the risk of distribution mismatch.
 
 \begin{figure}[h]
 \centering
@@ -50,7 +50,7 @@ In the locality phase, LRU should benefit from repeated hot-page references beca
 \end{figure}
 
 \section{Conclusion}
-The experiment connects classical memory-management policies to a small adaptive component without changing the workload between policies. The shift demonstrates why a policy tuned to stable locality may degrade when the working set broadens. The learned policy is promising as an interpretable heuristic, but the experiment should be extended with multiple seeds, online training labels, confidence calibration, and real traces before making deployment claims.
+Across three generated seeds, the broad random phase consistently produces substantially more faults than the locality phase. The learned policy performs best among the online policies in the locality phase but loses that advantage after the shift. These synthetic results illustrate how a fixed learned rule can be sensitive to changing distributions. More seeds, online training labels, and real traces would be needed before making deployment claims.
 
 \bibliographystyle{plain}
 \bibliography{references}

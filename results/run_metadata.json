@@ -1,5 +1,10 @@
 {
-  "seed": 307,
+  "evaluation_seeds": [
+    307,
+    308,
+    309
+  ],
+  "runs": 3,
   "trace_length": 1000,
   "shift_index": 500,
   "frame_counts": [

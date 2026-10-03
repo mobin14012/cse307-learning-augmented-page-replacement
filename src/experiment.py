@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import json
 import random
+import statistics
 from collections import Counter
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from sklearn.tree import DecisionTreeClassifier
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 SEED = 307
+EVALUATION_SEEDS = (307, 308, 309)
 SHIFT = 500
 TRACE_LENGTH = 1000
 FRAME_COUNTS = (4, 8, 12)
@@ -113,41 +115,62 @@ TRAINED_MODEL = train_model()
 
 def main() -> None:
     RESULTS.mkdir(exist_ok=True)
-    trace = make_trace(SEED)
+    all_rows = []
+    traces = {}
+    for seed in EVALUATION_SEEDS:
+        trace = make_trace(seed)
+        traces[str(seed)] = trace
+        for frames in FRAME_COUNTS:
+            for policy in ("FIFO", "LRU", "Optimal", "Learned"):
+                hit_vector, _ = simulate(trace, frames, policy)
+                for phase, lo, hi in (("locality", 0, SHIFT), ("shifted_random", SHIFT, len(trace))):
+                    segment = hit_vector[lo:hi]
+                    phase_faults = sum(not h for h in segment)
+                    all_rows.append({"seed": seed, "policy": policy, "frames": frames, "phase": phase,
+                                     "accesses": len(segment), "hits": len(segment) - phase_faults,
+                                     "faults": phase_faults, "hit_ratio": (len(segment) - phase_faults) / len(segment)})
+    with (RESULTS / "run_metrics.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=all_rows[0].keys())
+        writer.writeheader(); writer.writerows(all_rows)
     rows = []
-    for frames in FRAME_COUNTS:
-        for policy in ("FIFO", "LRU", "Optimal", "Learned"):
-            hit_vector, faults = simulate(trace, frames, policy)
-            for phase, lo, hi in (("locality", 0, SHIFT), ("shifted_random", SHIFT, len(trace))):
-                segment = hit_vector[lo:hi]
-                phase_faults = sum(not h for h in segment)
-                rows.append({"policy": policy, "frames": frames, "phase": phase,
-                             "accesses": len(segment), "hits": len(segment) - phase_faults,
-                             "faults": phase_faults, "hit_ratio": (len(segment) - phase_faults) / len(segment)})
+    keys = sorted({(r["policy"], r["frames"], r["phase"]) for r in all_rows})
+    for policy, frames, phase in keys:
+        matches = [r for r in all_rows if (r["policy"], r["frames"], r["phase"]) == (policy, frames, phase)]
+        rows.append({"policy": policy, "frames": frames, "phase": phase,
+                     "runs": len(matches), "accesses_per_run": matches[0]["accesses"],
+                     "mean_hits": statistics.mean(r["hits"] for r in matches),
+                     "mean_faults": statistics.mean(r["faults"] for r in matches),
+                     "std_faults": statistics.stdev(r["faults"] for r in matches),
+                     "mean_hit_ratio": statistics.mean(r["hit_ratio"] for r in matches),
+                     "std_hit_ratio": statistics.stdev(r["hit_ratio"] for r in matches)})
     with (RESULTS / "metrics.csv").open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=rows[0].keys())
         writer.writeheader(); writer.writerows(rows)
     with (RESULTS / "trace.json").open("w", encoding="utf-8") as f:
-        json.dump({"seed": SEED, "shift_index": SHIFT, "pages": trace}, f)
+        json.dump({"shift_index": SHIFT, "traces_by_seed": traces}, f)
     make_figure(rows)
-    summary = {"seed": SEED, "trace_length": len(trace), "shift_index": SHIFT,
+    summary = {"evaluation_seeds": EVALUATION_SEEDS, "runs": len(EVALUATION_SEEDS),
+               "trace_length": TRACE_LENGTH, "shift_index": SHIFT,
                "frame_counts": FRAME_COUNTS, "model": "DecisionTreeClassifier(max_depth=4)",
                "training_trace_seed": SEED + 1}
     (RESULTS / "run_metadata.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    print("Generated results/metrics.csv, results/trace.json, results/run_metadata.json, results/page_faults.png")
+    print("Completed evaluation seeds: " + ", ".join(map(str, EVALUATION_SEEDS)))
+    print("Generated aggregate and per-run CSVs, traces, metadata, and chart under results/.")
 
 
 def make_figure(rows: list[dict]) -> None:
     policies = ("FIFO", "LRU", "Optimal", "Learned")
     fig, axes = plt.subplots(1, 2, figsize=(10, 4.2), sharey=True)
     for ax, phase in zip(axes, ("locality", "shifted_random")):
-        selected = [r for r in rows if r["phase"] == phase and r["frames"] == 8]
-        ax.bar(policies, [r["faults"] for p in policies for r in selected if r["policy"] == p], color=["#5577aa", "#3a9d83", "#d28b36", "#9b6baa"])
+        selected = {r["policy"]: r for r in rows if r["phase"] == phase and r["frames"] == 8}
+        ax.bar(policies, [selected[p]["mean_faults"] for p in policies],
+               yerr=[selected[p]["std_faults"] for p in policies], capsize=4,
+               color=["#5577aa", "#3a9d83", "#d28b36", "#9b6baa"])
         ax.set_title(f"{phase.replace('_', ' ').title()} (8 frames)")
-        ax.set_ylabel("Page faults / 500 references")
+        ax.set_ylabel("Mean page faults / 500 references (±1 SD)")
         ax.tick_params(axis="x", rotation=20)
         ax.grid(axis="y", alpha=.25)
-    fig.suptitle("Page replacement before and after the workload shift")
+    fig.suptitle("Page replacement before and after the shift (3 seeds)")
     fig.tight_layout()
     fig.savefig(RESULTS / "page_faults.png", dpi=180)
 

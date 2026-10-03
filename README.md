@@ -1,59 +1,60 @@
-# CSE-307 Term Paper: Learning-Augmented Page Replacement
+# Learning-Augmented Page Replacement
 
-This repository implements **Track 1 — Learned Page Replacement** from the CSE-307 Section B brief. It compares FIFO, LRU, Belady's optimal replacement, and a small decision-tree heuristic on one reproducible trace containing a deliberate workload shift.
+**CSE-307 Operating Systems · Term Paper · Track 1: Memory Management**
+
+This project compares FIFO, LRU, Belady's Optimal, and a small decision-tree eviction heuristic under a controlled change in page-reference behavior. The same experimental design is repeated with three independent random seeds, making the reported averages less dependent on one generated trace.
 
 ## Research question
 
-How does a learned eviction heuristic compare with classical page-replacement policies when a locality-heavy workload changes to a broad random workload?
+How do classical and learned page-replacement policies behave when a locality-heavy reference stream shifts to broad random access, and how does the number of available frames affect that behavior?
 
-## Repository contents
+## Repository map
 
-```text
-src/experiment.py          implementation, workload, experiment runner
-results/metrics.csv        raw per-policy measurements
-results/trace.json         exact seeded access trace
-results/run_metadata.json  seed and experiment configuration
-results/page_faults.png    generated comparison figure
-report/term-paper.tex      report source
-report/references.bib      references used in the report
-demo.md                    3–5 minute walkthrough script
-requirements.txt           pinned Python dependencies
-```
+| Path | Description |
+|---|---|
+| `src/experiment.py` | Workload generator, policy implementations, repeated experiment runner |
+| `src/build_pdf.py` | Builds the report PDF from the measured results |
+| `results/run_metrics.csv` | Per-seed measurements for every policy, frame count, and phase |
+| `results/metrics.csv` | Mean and sample standard deviation across the three seeds |
+| `results/trace.json` | Exact generated traces keyed by seed |
+| `results/run_metadata.json` | Experiment parameters and seeds |
+| `results/page_faults.png` | 8-frame phase comparison; error bars show ±1 sample standard deviation |
+| `report/term-paper.pdf` | Current two-page report |
+| `report/term-paper.tex`, `report/references.bib` | Editable report source and references |
+| `demo.md` | Suggested 3–5 minute class walkthrough |
 
-## Reproduce the results
+## Reproduce the experiment
 
-Python 3.11+ is recommended.
+Requires Python 3.11 or newer.
 
 ```bash
 python -m venv .venv
-# Windows: .venv\Scripts\activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
 # Linux/macOS: source .venv/bin/activate
 python -m pip install -r requirements.txt
 python src/experiment.py
+python src/build_pdf.py
 ```
 
-The script uses seed `307`, creates 1,000 references, and shifts at reference 500. The first phase is locality-heavy over a small hot set; the second phase is uniform random access over a larger page set. Results are split into 4, 8, and 12 frame configurations. The report focuses on the 8-frame case.
+The experiment uses evaluation seeds **307, 308, and 309**. Each produces one 1,000-reference trace, with the distribution shift at reference 500. In the first half, 82% of accesses select from a small hot set and the remainder provide occasional sequential references. In the second half, references are uniformly selected from a larger page set. Each trace is replayed unchanged for all policies at 4, 8, and 12 frames. The learned decision tree is trained once on a separate trace (seed 308) and held fixed across these evaluation runs.
 
-## Methods
+## Policies and measurements
 
-- **FIFO:** evicts the page that has been resident longest.
-- **LRU:** evicts the page with the oldest last-reference time.
-- **Optimal:** evicts the page whose next reference is farthest in the future; this is an offline lower-bound baseline.
-- **Learned:** trains a depth-4 decision tree on an independent seeded trace. Candidate features are recency age, recent-window frequency, and a recent-touch indicator. The training label is the candidate with the farthest next use in the training trace.
+- **FIFO:** evicts the page resident for the longest time.
+- **LRU:** evicts the page with the oldest last reference.
+- **Optimal:** evicts the page whose next reference is farthest in the future. This offline algorithm is a comparison bound, not a practical online policy.
+- **Learned:** a depth-4 decision tree scores resident candidates using age, frequency in the preceding 64 references, and a recent-touch indicator. Its labels are generated from a 96-reference future horizon on the separate training trace.
 
-The learned policy is intentionally presented as an experimental heuristic, not as a deployable online predictor: its labels use a future horizon during training, while evaluation uses only current/history features. This limitation is discussed in the paper.
+The CSVs report phase-specific page faults and hit ratios. `metrics.csv` includes arithmetic means and sample standard deviations over the three runs. The learned method is a lightweight supervised heuristic: because training labels use future accesses, it should not be interpreted as a fully online predictor. The results also show that performance is workload- and seed-dependent.
 
-## AI assistance disclosure
+## Report and interpretation
 
-An AI coding assistant was used to help structure the Python implementation, documentation, and report template. The student must inspect the code, rerun the experiment, verify the numbers, and rewrite or personalize the analysis before submission. The workload seed, measurements, interpretation, and final claims should be understood by the student and presented honestly.
+The generated PDF summarizes the implementation, workload, averaged 8-frame results, chart, limitations, and references. Rebuild it after regenerating the experiment data. Before submission, fill in the student name and ID fields, read the report, and confirm that its explanation matches your own understanding and the included measurements.
 
-## Submission checklist
+## AI assistance
 
-1. Run `python src/experiment.py` and confirm the files in `results/` are current.
-2. Read `report/term-paper.tex`, fill in your name, student ID, and institution, then compile it with a LaTeX installation or an online LaTeX editor.
-3. Review the generated CSV and figure against the report tables.
-4. Create your own GitHub repository, commit this project, and submit its URL plus the compiled PDF.
+An AI coding assistant helped with implementation and documentation. The student should verify the results, understand the code, and be prepared to explain the work, as required by the course brief.
 
-## References
+## Submission
 
-The report cites Belady's optimal replacement work, the LRU paper, the scikit-learn decision-tree documentation, and the course brief. Full entries are in `report/references.bib`.
+Submit the GitHub repository URL and `report/term-paper.pdf` through the course submission channel. Follow the course brief for the printed report and in-class walkthrough requirements.
