@@ -1,0 +1,12 @@
+{
+  "seed": 307,
+  "trace_length": 1000,
+  "shift_index": 500,
+  "frame_counts": [
+    4,
+    8,
+    12
+  ],
+  "model": "DecisionTreeClassifier(max_depth=4)",
+  "training_trace_seed": 308
+}

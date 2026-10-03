@@ -1,0 +1,57 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=0.78in]{geometry}
+\usepackage{graphicx,booktabs,amsmath,hyperref,url}
+\title{Learning-Augmented Page Replacement Under a Workload Shift}
+\author{Student Name \quad Student ID}
+\date{CSE-307 Operating Systems -- Section B}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper evaluates FIFO, LRU, Belady's optimal replacement, and a lightweight decision-tree eviction heuristic on a seeded synthetic trace. The trace begins with locality-heavy references and changes at its midpoint to broad random access. The experiment shows how increasing the working set changes fault behavior and tests whether simple history features can adapt to the shift. The optimal policy provides an offline lower bound; it is not an implementable online policy.
+\end{abstract}
+
+\section{Problem framing}
+Virtual memory allows a process to use a logical address space larger than physical memory, but a reference to a page not currently resident causes a page fault. When a frame is full, the replacement policy chooses a victim. FIFO is simple but ignores reuse, while LRU uses the recent past as a proxy for near-future reuse. Belady's optimal policy chooses the page whose next use is farthest away and is therefore useful as an offline comparison \cite{belady1966,mattson1970}. The course brief asks whether a lightweight learned layer can respond when the workload changes \cite{brief2026}.
+
+\section{Implementation and learned component}
+The Python program in `src/experiment.py` implements all four policies. The simulator records a hit vector and page-fault count for every reference. The learned policy uses a depth-4 decision tree, following the standard classifier interface described in the scikit-learn documentation \cite{sklearn2025}. For each resident candidate, its features are (i) age since last reference, (ii) frequency in the previous 64 references, and (iii) whether it was touched in the previous eight references. Training uses an independent seeded trace. Labels identify the candidate with the farthest next use in a 96-reference horizon. During evaluation, only current/history features are supplied.
+
+This design is deliberately small and interpretable. It is also an important limitation: the labels use future information during training, so the result demonstrates a learned heuristic rather than a fully online production predictor.
+
+\section{Experimental setup}
+The evaluation trace contains 1,000 references and uses random seed 307. References 0--499 are locality-heavy: 82\% of accesses select from a small hot set, with occasional sequential accesses. At reference 500, the distribution shifts to uniform random references over 32 pages. Each policy is tested with 4, 8, and 12 frames; the main comparison uses 8 frames. The same trace is replayed for every policy, so differences are attributable to replacement decisions. The exact trace and metadata are stored in `results/`.
+
+\section{Results and analysis}
+Table~\ref{tab:results} is populated from `results/metrics.csv` after running the supplied command. The generated figure shows the 8-frame fault counts for the two phases.
+
+\begin{table}[h]
+\centering
+\caption{8-frame results from the seeded run.}
+\label{tab:results}
+\begin{tabular}{lrrrr}
+\toprule
+Policy & Local faults & Local hit ratio & Shifted faults & Shifted hit ratio\\
+\midrule
+FIFO & 129 & 0.742 & 379 & 0.242 \\
+LRU & 109 & 0.782 & 382 & 0.236 \\
+Optimal & 56 & 0.888 & 234 & 0.532 \\
+Learned & 81 & 0.838 & 396 & 0.208 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In the locality phase, LRU should benefit from repeated hot-page references because recently used pages are likely to be used again. FIFO can evict a frequently reused page simply because it arrived earlier. Optimal should have the fewest faults because it sees the future and serves as a lower bound. After the shift, all policies face a larger effective working set, so hit ratios decrease and faults increase. The size of the degradation depends on how well each policy's assumptions match the new distribution. A history-based learner can be competitive when recency and frequency remain informative, but it cannot remove compulsory misses caused by insufficient frames and may misclassify candidates at the abrupt boundary.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\linewidth]{../results/page_faults.png}
+\caption{Fault counts before and after the distribution shift for eight frames.}
+\end{figure}
+
+\section{Conclusion}
+The experiment connects classical memory-management policies to a small adaptive component without changing the workload between policies. The shift demonstrates why a policy tuned to stable locality may degrade when the working set broadens. The learned policy is promising as an interpretable heuristic, but the experiment should be extended with multiple seeds, online training labels, confidence calibration, and real traces before making deployment claims.
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}
